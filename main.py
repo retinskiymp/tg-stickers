@@ -94,12 +94,6 @@ def admin_help_text() -> str:
     return "\n".join(lines)
 
 
-def help_text_for(update: Update) -> str:
-    if is_bot_admin(update):
-        return f"{HelpText}\n\n{admin_help_text()}"
-    return HelpText
-
-
 def count_of(amount: int, noun: str) -> str:
     return f"{amount} {noun}" if amount == 1 else f"{amount} {noun}s"
 
@@ -260,11 +254,11 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings = touch_chat(update)
     set_chat_presence(chat_id, True)
     apply_schedules(context, chat_id, settings)
-    await update.effective_message.reply_html(help_text_for(update))
+    await update.effective_message.reply_html(HelpText)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.effective_message.reply_html(help_text_for(update))
+    await update.effective_message.reply_html(HelpText)
 
 
 async def admin_help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
