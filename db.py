@@ -130,19 +130,6 @@ def mark_post_requested(kind: PostingKind, chat_id: int) -> None:
         session.commit()
 
 
-def add_pack(kind: PostingKind, name: str, title: str | None = None) -> bool:
-    with SessionLocal() as session:
-        pack = session.query(kind.pack_model).filter_by(name=name).first()
-        if pack:
-            if not pack.alive:
-                pack.alive = True
-                session.commit()
-            return False
-        session.add(kind.pack_model(name=name, title=title))
-        session.commit()
-        return True
-
-
 def add_packs(kind: PostingKind, names: list[str]) -> int:
     unique = list(dict.fromkeys(names))
     added = 0

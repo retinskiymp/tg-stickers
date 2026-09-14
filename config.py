@@ -26,10 +26,10 @@ ENABLED_BY_DEFAULT: bool = os.getenv("ENABLED_BY_DEFAULT", "1") == "1"
 # DISCOVER_EMOJI_PACKS: bool = os.getenv("DISCOVER_EMOJI_PACKS", "1") == "1"
 
 PACK_PICK_ATTEMPTS: int = int(os.getenv("PACK_PICK_ATTEMPTS", "8"))
-HARVEST_INTERVAL_MINUTES: int = int(os.getenv("HARVEST_INTERVAL_MINUTES", "60"))
-HARVEST_REQUESTS_PER_CATALOG: int = int(os.getenv("HARVEST_REQUESTS_PER_CATALOG", "5"))
-MIN_POOL_PACKS: int = int(os.getenv("MIN_POOL_PACKS", "300"))
+HARVEST_INTERVAL_MINUTES: int = int(os.getenv("HARVEST_INTERVAL_MINUTES", "1440"))
+POPULAR_PACKS_LIMIT: int = int(os.getenv("POPULAR_PACKS_LIMIT", "500"))
+TLGRM_HOST: str = os.getenv("TLGRM_HOST", "tlgrm.ru")
+TGLIST_HOST: str = os.getenv("TGLIST_HOST", "tglist.info")
 HTTP_TIMEOUT_SECONDS: float = float(os.getenv("HTTP_TIMEOUT_SECONDS", "10"))
-DISCOVER_PACKS: bool = os.getenv("DISCOVER_PACKS", "1") == "1"
 ADMIN_ONLY_SETTINGS: bool = os.getenv("ADMIN_ONLY_SETTINGS", "1") == "1"
 ADMIN_IDS: frozenset[int] = read_admin_ids(os.getenv("ADMIN_IDS", ""))

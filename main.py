@@ -2,15 +2,13 @@ import logging
 from datetime import timedelta
 
 from telegram import BotCommand, Update
-from telegram.constants import ChatMemberStatus, ChatType, StickerType
+from telegram.constants import ChatMemberStatus, ChatType
 from telegram.error import TelegramError
 from telegram.ext import (
     ApplicationBuilder,
     ChatMemberHandler,
     CommandHandler,
     ContextTypes,
-    MessageHandler,
-    filters,
 )
 
 from config import (
@@ -34,21 +32,22 @@ from db import (
 )
 from handlers import (
     CommandsByKindKey,
+    HandlerAdminHelp,
     HandlerAdminStats,
     HandlerHelp,
     HandlerStart,
     HandlerStatus,
     KindCommands,
 )
-from interval import format_interval, parse_interval
-from kinds import Kinds, PostingKind, StickerKind
-from packs import ensure_pool, harvest_pool, parse_pack_name, remember_pack
+from interval import format_countdown, format_interval, parse_interval
+from kinds import Kinds, PostingKind
+from packs import harvest_pool
 from scheduler import (
     cancel_all_chat_jobs,
     cancel_chat_job,
-    next_run_at,
     restore_jobs,
     schedule_chat,
+    seconds_until_next_run,
     send_random_post,
 )
 
@@ -65,11 +64,9 @@ HelpText = (
     f"{format_interval(MIN_INTERVAL_MINUTES)} at least\n"
     "/interval — show the current interval\n"
     "/on, /off — turn posting in this chat on or off\n"
-    "/status — this chat's settings\n"
-    "/addpack &lt;name or link&gt; — add a sticker pack to the pool\n"
-    "/packs — what the pool holds\n\n"
-    "Packs come from public sticker catalogues and new ones are picked up in the "
-    "background. Any sticker posted in a chat with me joins the pool too."
+    "/status — this chat's settings\n\n"
+    "The pool is built only from the most popular packs of public sticker "
+    "catalogues and is refreshed on a fixed schedule."
 )
 RecentPacksLimit = 10
 AdminOnlyText = "Only chat admins can change these settings."
@@ -78,6 +75,29 @@ HarvestJobName = "harvest"
 
 def commands_for(kind: PostingKind) -> KindCommands:
     return CommandsByKindKey[kind.key]
+
+
+def admin_help_text() -> str:
+    lines = [
+        "<b>Admin commands</b>",
+        f"/{HandlerAdminHelp.long} — this list",
+        f"/{HandlerAdminStats.long} — bot stats across every chat",
+    ]
+    lines += [
+        f"/{commands_for(kind).packs.long} — what the {kind.pack_noun} pool holds"
+        for kind in Kinds
+    ]
+    lines.append(
+        "\nThey all start with <b>a</b>, stay out of the command menu and answer "
+        "only to the ids in ADMIN_IDS."
+    )
+    return "\n".join(lines)
+
+
+def help_text_for(update: Update) -> str:
+    if is_bot_admin(update):
+        return f"{HelpText}\n\n{admin_help_text()}"
+    return HelpText
 
 
 def count_of(amount: int, noun: str) -> str:
@@ -102,14 +122,6 @@ def interval_help_text(kind: PostingKind) -> str:
         f"/{command} 1h 20m, /{command} 1d — two parts at most, each with its own "
         "unit. Allowed range: "
         f"{format_interval(MIN_INTERVAL_MINUTES)} — {format_interval(MAX_INTERVAL_MINUTES)}."
-    )
-
-
-def add_pack_help_text(kind: PostingKind) -> str:
-    command = commands_for(kind).add_pack.long
-    return (
-        f"Name {kind.article} {kind.pack_noun}: /{command} UtyaDuck or "
-        f"/{command} t.me/{kind.link_path}/UtyaDuck"
     )
 
 
@@ -228,38 +240,10 @@ def make_turn_off_handler(kind: PostingKind):
     return handler
 
 
-def make_add_pack_handler(kind: PostingKind):
-    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        if not context.args:
-            await update.effective_message.reply_text(add_pack_help_text(kind))
-            return
-        name = parse_pack_name(kind, " ".join(context.args))
-        if not name:
-            await update.effective_message.reply_text(
-                f"That is not a {kind.pack_noun} name or link."
-            )
-            return
-        try:
-            sticker_set = await context.bot.get_sticker_set(name)
-        except Exception:
-            await update.effective_message.reply_text(f"Pack {name} was not found.")
-            return
-        if sticker_set.sticker_type != kind.sticker_type:
-            await update.effective_message.reply_text(
-                f"{sticker_set.title} is not {kind.article} {kind.pack_noun}."
-            )
-            return
-        added = remember_pack(kind, name, sticker_set.title)
-        answer = "Added" if added else "Already in the pool"
-        await update.effective_message.reply_text(
-            f"{answer}: {sticker_set.title} ({name})."
-        )
-
-    return handler
-
-
 def make_packs_handler(kind: PostingKind):
     async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not is_bot_admin(update):
+            return
         total, alive = count_packs(kind)
         lines = [f"The pool holds {alive} alive {kind.pack_noun}s of {total}."]
         latest = recent_packs(kind, RecentPacksLimit)
@@ -276,11 +260,17 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings = touch_chat(update)
     set_chat_presence(chat_id, True)
     apply_schedules(context, chat_id, settings)
-    await update.effective_message.reply_html(HelpText)
+    await update.effective_message.reply_html(help_text_for(update))
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.effective_message.reply_html(HelpText)
+    await update.effective_message.reply_html(help_text_for(update))
+
+
+async def admin_help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_bot_admin(update):
+        return
+    await update.effective_message.reply_html(admin_help_text())
 
 
 def kind_status_line(
@@ -291,9 +281,9 @@ def kind_status_line(
         "on" if state.enabled else "off",
         f"every {format_interval(state.interval_minutes)}",
     ]
-    upcoming = next_run_at(context.application, kind, settings.chat_tg_id)
-    if state.enabled and upcoming:
-        parts.append(f"next {upcoming.strftime('%d.%m %H:%M')}")
+    remaining = seconds_until_next_run(context.application, kind, settings.chat_tg_id)
+    if state.enabled and remaining is not None:
+        parts.append(f"next in {format_countdown(remaining)}")
     parts.append(f"{state.sent_count} posted")
     return f"{kind.plural_noun.capitalize()}: {', '.join(parts)}"
 
@@ -301,11 +291,12 @@ def kind_status_line(
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings = touch_chat(update)
     lines = [kind_status_line(context, kind, settings) for kind in Kinds]
-    for kind in Kinds:
-        total, alive = count_packs(kind)
-        lines.append(
-            f"{kind.pack_noun.capitalize()}s in the pool: {alive} alive of {total}"
-        )
+    if is_bot_admin(update):
+        for kind in Kinds:
+            total, alive = count_packs(kind)
+            lines.append(
+                f"{kind.pack_noun.capitalize()}s in the pool: {alive} alive of {total}"
+            )
     await update.effective_message.reply_text("\n".join(lines))
 
 
@@ -339,14 +330,6 @@ async def admin_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not is_bot_admin(update):
         return
     await update.effective_message.reply_html(admin_stats_text())
-
-
-async def discover_sticker_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    sticker = update.effective_message.sticker
-    if not sticker or sticker.type != StickerType.REGULAR:
-        return
-    if remember_pack(StickerKind, sticker.set_name):
-        logger.info("New pack in the pool: %s", sticker.set_name)
 
 
 # def custom_emoji_ids(message) -> list[str]:
@@ -399,8 +382,6 @@ BotCommands = [
     BotCommand("on", "turn posting on"),
     BotCommand("off", "turn posting off"),
     BotCommand("status", "this chat's settings"),
-    BotCommand("addpack", "add a sticker pack to the pool"),
-    BotCommand("packs", "what the pool holds"),
     BotCommand("help", "what I can do"),
 ]
 
@@ -408,7 +389,6 @@ BotCommands = [
 async def harvest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     for kind in Kinds:
         added = await harvest_pool(kind)
-        added += await ensure_pool(kind)
         total, alive = count_packs(kind)
         logger.info(
             "Harvested %s %ss, pool holds %s alive of %s",
@@ -450,7 +430,6 @@ def add_kind_handlers(app, kind: PostingKind) -> None:
     app.add_handler(CommandHandler(commands.interval.as_list(), make_interval_handler(kind)))
     app.add_handler(CommandHandler(commands.turn_on.as_list(), make_turn_on_handler(kind)))
     app.add_handler(CommandHandler(commands.turn_off.as_list(), make_turn_off_handler(kind)))
-    app.add_handler(CommandHandler(commands.add_pack.as_list(), make_add_pack_handler(kind)))
     app.add_handler(CommandHandler(commands.packs.as_list(), make_packs_handler(kind)))
 
 
@@ -461,22 +440,11 @@ def main() -> None:
     app.add_handler(CommandHandler(HandlerStart.as_list(), start_cmd))
     app.add_handler(CommandHandler(HandlerHelp.as_list(), help_cmd))
     app.add_handler(CommandHandler(HandlerStatus.as_list(), status_cmd))
+    app.add_handler(CommandHandler(HandlerAdminHelp.as_list(), admin_help_cmd))
     app.add_handler(CommandHandler(HandlerAdminStats.as_list(), admin_stats_cmd))
     for kind in Kinds:
         add_kind_handlers(app, kind)
     app.add_handler(ChatMemberHandler(track_membership, ChatMemberHandler.MY_CHAT_MEMBER))
-
-    if StickerKind.discover:
-        app.add_handler(MessageHandler(filters.Sticker.ALL, discover_sticker_pack), group=1)
-    # if EmojiKind.discover:
-    #     app.add_handler(
-    #         MessageHandler(
-    #             filters.Entity(MessageEntityType.CUSTOM_EMOJI)
-    #             | filters.CaptionEntity(MessageEntityType.CUSTOM_EMOJI),
-    #             discover_emoji_packs,
-    #         ),
-    #         group=2,
-    #     )
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

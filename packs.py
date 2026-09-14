@@ -4,51 +4,21 @@ from telegram import Bot, Sticker
 from telegram.error import BadRequest, TelegramError
 
 from catalogs import harvest_pack_names
-from config import HARVEST_REQUESTS_PER_CATALOG, PACK_PICK_ATTEMPTS
+from config import PACK_PICK_ATTEMPTS, POPULAR_PACKS_LIMIT
 from db import (
-    add_pack,
     add_packs,
     count_alive_packs,
     mark_pack_dead,
     mark_pack_used,
     pick_random_pack_name,
 )
-from kinds import PackNamePattern, PostingKind
-
-EnsurePoolRounds = 8
-
-
-def parse_pack_name(kind: PostingKind, text: str) -> str | None:
-    text = text.strip()
-    link_match = kind.link_pattern.search(text)
-    if link_match:
-        return link_match.group(1)
-    if PackNamePattern.match(text):
-        return text
-    return None
-
-
-def remember_pack(kind: PostingKind, name: str | None, title: str | None = None) -> bool:
-    if not name:
-        return False
-    return add_pack(kind, name, title)
+from kinds import PostingKind
 
 
 async def harvest_pool(kind: PostingKind) -> int:
-    names = await harvest_pack_names(kind.catalogs, HARVEST_REQUESTS_PER_CATALOG)
+    """Re-read the top POPULAR_PACKS_LIMIT packs of every catalogue and store the new ones."""
+    names = await harvest_pack_names(kind.catalogs, POPULAR_PACKS_LIMIT)
     return add_packs(kind, names)
-
-
-async def ensure_pool(kind: PostingKind) -> int:
-    added = 0
-    for _ in range(EnsurePoolRounds):
-        if count_alive_packs(kind) >= kind.min_pool_packs:
-            break
-        harvested = await harvest_pool(kind)
-        if not harvested:
-            break
-        added += harvested
-    return added
 
 
 async def fetch_pack_sticker(bot: Bot, kind: PostingKind, name: str) -> Sticker | None:

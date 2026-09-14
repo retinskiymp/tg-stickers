@@ -70,6 +70,15 @@ def next_run_at(app: Application, kind: PostingKind, chat_id: int) -> datetime |
     return jobs[0].next_t if jobs else None
 
 
+def seconds_until_next_run(
+    app: Application, kind: PostingKind, chat_id: int
+) -> float | None:
+    upcoming = next_run_at(app, kind, chat_id)
+    if upcoming is None:
+        return None
+    return (upcoming - datetime.now(upcoming.tzinfo)).total_seconds()
+
+
 def first_delay_seconds(last_sent_at: datetime | None, interval_minutes: int) -> float:
     if last_sent_at is None:
         return interval_minutes * 60

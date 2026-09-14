@@ -1,25 +1,10 @@
-import re
 from dataclasses import dataclass
 
 from telegram.constants import StickerType
 
 from catalogs import StickerCatalogs
-from config import (
-    DEFAULT_INTERVAL_MINUTES,
-    DISCOVER_PACKS,
-    ENABLED_BY_DEFAULT,
-    MIN_INTERVAL_MINUTES,
-    MIN_POOL_PACKS,
-)
+from config import DEFAULT_INTERVAL_MINUTES, ENABLED_BY_DEFAULT, MIN_INTERVAL_MINUTES
 from models import ChatPostingState, ChatSettingsModel, StickerPackModel
-
-PackNamePattern = re.compile(r"^[A-Za-z0-9_]{1,64}$")
-
-
-def pack_link_pattern(link_path: str) -> re.Pattern:
-    return re.compile(
-        rf"(?:https?://)?(?:t|telegram)\.me/{link_path}/([A-Za-z0-9_]+)", re.IGNORECASE
-    )
 
 
 @dataclass(frozen=True)
@@ -32,12 +17,8 @@ class PostingKind:
     pack_model: type
     sticker_type: str
     catalogs: tuple
-    link_path: str
-    link_pattern: re.Pattern
     default_interval_minutes: int
     enabled_by_default: bool
-    min_pool_packs: int
-    discover: bool
     send_as_upload: bool
 
     def state(self, settings: ChatSettingsModel) -> ChatPostingState:
@@ -56,12 +37,8 @@ StickerKind = PostingKind(
     pack_model=StickerPackModel,
     sticker_type=StickerType.REGULAR,
     catalogs=StickerCatalogs,
-    link_path="addstickers",
-    link_pattern=pack_link_pattern("addstickers"),
     default_interval_minutes=DEFAULT_INTERVAL_MINUTES,
     enabled_by_default=ENABLED_BY_DEFAULT,
-    min_pool_packs=MIN_POOL_PACKS,
-    discover=DISCOVER_PACKS,
     send_as_upload=False,
 )
 

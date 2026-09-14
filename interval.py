@@ -44,3 +44,11 @@ def format_interval(minutes: int) -> str:
     if mins or not parts:
         parts.append(f"{mins}m")
     return " ".join(parts)
+
+
+def format_countdown(seconds: float) -> str:
+    """How long is left, in the same units as an interval. Never an absolute time."""
+    minutes = int(seconds // 60)
+    if minutes < 1:
+        return "under 1m"
+    return format_interval(minutes)

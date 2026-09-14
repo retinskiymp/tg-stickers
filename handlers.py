@@ -28,13 +28,15 @@ class KindCommands:
     interval: CommandAliases
     turn_on: CommandAliases
     turn_off: CommandAliases
-    add_pack: CommandAliases
     packs: CommandAliases
 
 
 HandlerStart = CommandAliases(long="start")
 HandlerHelp = CommandAliases(long="help", short="h")
 HandlerStatus = CommandAliases(long="status")
+
+# Admin-only commands are all prefixed with "a" and kept out of the command menu.
+HandlerAdminHelp = CommandAliases(long="ahelp")
 HandlerAdminStats = CommandAliases(long="astats", short="adminstats")
 
 StickerCommands = KindCommands(
@@ -42,8 +44,7 @@ StickerCommands = KindCommands(
     interval=CommandAliases(long="interval", short=("setinterval", "i", "stickerinterval")),
     turn_on=CommandAliases(long="on", short="stickeron"),
     turn_off=CommandAliases(long="off", short="stickeroff"),
-    add_pack=CommandAliases(long="addpack", short="add"),
-    packs=CommandAliases(long="packs"),
+    packs=CommandAliases(long="apacks", short="astickerpacks"),
 )
 
 # EmojiCommands = KindCommands(
@@ -52,7 +53,7 @@ StickerCommands = KindCommands(
 #     turn_on=CommandAliases(long="emojion"),
 #     turn_off=CommandAliases(long="emojioff"),
 #     add_pack=CommandAliases(long="addemoji", short="addemojipack"),
-#     packs=CommandAliases(long="emojipacks"),
+#     packs=CommandAliases(long="aemojipacks"),
 # )
 
 CommandsByKindKey = {"sticker": StickerCommands}
