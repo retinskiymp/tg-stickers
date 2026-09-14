@@ -7,6 +7,7 @@ import httpx
 
 from config import (
     ANIME_SEARCH_TERMS,
+    EXCLUDED_PACK_PREFIXES,
     EXCLUDED_PACK_SUFFIXES,
     HTTP_TIMEOUT_SECONDS,
     SPICY_CATEGORIES,
@@ -37,11 +38,14 @@ TglistPackPattern = re.compile(r'href="/view/([A-Za-z0-9_]{2,64})"')
 PageBatchSize = 6
 MaxCatalogPages = 300
 ExcludedSuffixes = tuple(suffix.lower() for suffix in EXCLUDED_PACK_SUFFIXES)
+ExcludedPrefixes = tuple(prefix.lower() for prefix in EXCLUDED_PACK_PREFIXES)
 
 
 def is_wanted(name: str) -> bool:
     lowered = name.lower()
-    return not any(lowered.endswith(suffix) for suffix in ExcludedSuffixes)
+    if any(lowered.endswith(suffix) for suffix in ExcludedSuffixes):
+        return False
+    return not any(lowered.startswith(prefix) for prefix in ExcludedPrefixes)
 
 # CombotUrls = (
 #     "https://combot.org/stickers",

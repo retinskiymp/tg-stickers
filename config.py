@@ -64,6 +64,11 @@ ANIME_SEARCH_TERMS: tuple[str, ...] = read_list(
 EXCLUDED_PACK_SUFFIXES: tuple[str, ...] = read_list(
     os.getenv("EXCLUDED_PACK_SUFFIXES", "vk,stickroom")
 )
+# VK imports mark themselves at either end of the name ("vk_sugar", "spidermen_vk").
+# Judged at the edges only: as a substring "vk" would also eat vovkavovka and kavkaz_p.
+EXCLUDED_PACK_PREFIXES: tuple[str, ...] = read_list(
+    os.getenv("EXCLUDED_PACK_PREFIXES", "vk")
+)
 # Owners rename packs to bolt promo tags onto the title, so this matches anywhere
 # in it — and only the live title from Telegram, never the catalogue's stale copy.
 EXCLUDED_TITLE_WORDS: tuple[str, ...] = read_list(

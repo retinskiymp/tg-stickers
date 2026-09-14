@@ -14,6 +14,7 @@ from telegram.ext import (
 from config import (
     ADMIN_IDS,
     ADMIN_ONLY_SETTINGS,
+    EXCLUDED_PACK_PREFIXES,
     EXCLUDED_PACK_SUFFIXES,
     EXCLUDED_TITLE_WORDS,
     HARVEST_INTERVAL_MINUTES,
@@ -406,7 +407,9 @@ async def harvest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def after_init(app) -> None:
     await app.bot.set_my_commands(BotCommands)
     for kind in Kinds:
-        dropped = drop_excluded_packs(kind, EXCLUDED_PACK_SUFFIXES)
+        dropped = drop_excluded_packs(
+            kind, EXCLUDED_PACK_SUFFIXES, EXCLUDED_PACK_PREFIXES
+        )
         retired = disable_excluded_titles(kind, EXCLUDED_TITLE_WORDS)
         if dropped or retired:
             logger.info(

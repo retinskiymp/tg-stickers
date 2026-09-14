@@ -204,20 +204,24 @@ def disable_excluded_titles(kind: PostingKind, words: tuple[str, ...]) -> int:
         return changed
 
 
-def drop_excluded_packs(kind: PostingKind, suffixes: tuple[str, ...]) -> int:
-    """Delete stored packs the exclusion rules now reject.
+def drop_excluded_packs(
+    kind: PostingKind, suffixes: tuple[str, ...], prefixes: tuple[str, ...]
+) -> int:
+    """Delete stored packs the name rules now reject, by either edge of the name.
 
-    Deleted rather than marked dead, so dropping a suffix from the rules lets the
-    packs back in on the next harvest.
+    Deleted rather than marked dead, so relaxing a rule lets the packs back in on
+    the next harvest.
     """
-    if not suffixes:
+    patterns = [f"%{escape_like(suffix)}" for suffix in suffixes]
+    patterns += [f"{escape_like(prefix)}%" for prefix in prefixes]
+    if not patterns:
         return 0
     with SessionLocal() as session:
         removed = sum(
             session.query(kind.pack_model)
-            .filter(kind.pack_model.name.ilike(f"%{escape_like(suffix)}", escape="\\"))
+            .filter(kind.pack_model.name.ilike(pattern, escape="\\"))
             .delete(synchronize_session=False)
-            for suffix in suffixes
+            for pattern in patterns
         )
         session.commit()
         return removed
