@@ -7,7 +7,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from config import DB_URL
-from kinds import EmojiKind, Kinds, PostingKind, StickerKind
+from kinds import Kinds, PostingKind, StickerKind
 from models import Base, ChatSettingsModel
 
 NameChunkSize = 400
@@ -46,8 +46,8 @@ def get_chat_settings(
             chat_type=chat_type,
             sticker_interval_minutes=StickerKind.starting_interval_minutes(),
             sticker_enabled=StickerKind.enabled_by_default,
-            emoji_interval_minutes=EmojiKind.starting_interval_minutes(),
-            emoji_enabled=EmojiKind.enabled_by_default,
+            # emoji_interval_minutes=EmojiKind.starting_interval_minutes(),
+            # emoji_enabled=EmojiKind.enabled_by_default,
         )
         session.add(settings)
         session.commit()
@@ -241,7 +241,6 @@ class ChatActivity:
     title: str | None
     chat_type: str | None
     sticker_sent_count: int
-    emoji_sent_count: int
 
 
 @dataclass(frozen=True)
@@ -298,19 +297,13 @@ def collect_admin_stats() -> AdminStats:
             session.query(func.count(ChatSettingsModel.id))
             .filter(
                 ChatSettingsModel.present == True,
-                (ChatSettingsModel.sticker_enabled == True)
-                | (ChatSettingsModel.emoji_enabled == True),
+                ChatSettingsModel.sticker_enabled == True,
             )
             .scalar()
         )
         busiest = (
             session.query(ChatSettingsModel)
-            .order_by(
-                (
-                    ChatSettingsModel.sticker_sent_count
-                    + ChatSettingsModel.emoji_sent_count
-                ).desc()
-            )
+            .order_by(ChatSettingsModel.sticker_sent_count.desc())
             .limit(BusiestChatsLimit)
             .all()
         )
@@ -327,7 +320,6 @@ def collect_admin_stats() -> AdminStats:
                     title=settings.title,
                     chat_type=settings.chat_type,
                     sticker_sent_count=settings.sticker_sent_count,
-                    emoji_sent_count=settings.emoji_sent_count,
                 )
                 for settings in busiest
             ],

@@ -3,19 +3,15 @@ from dataclasses import dataclass
 
 from telegram.constants import StickerType
 
-from catalogs import EmojiCatalogs, StickerCatalogs
+from catalogs import StickerCatalogs
 from config import (
     DEFAULT_INTERVAL_MINUTES,
-    DISCOVER_EMOJI_PACKS,
     DISCOVER_PACKS,
-    EMOJI_DEFAULT_INTERVAL_MINUTES,
-    EMOJI_ENABLED_BY_DEFAULT,
-    EMOJI_MIN_POOL_PACKS,
     ENABLED_BY_DEFAULT,
     MIN_INTERVAL_MINUTES,
     MIN_POOL_PACKS,
 )
-from models import ChatPostingState, ChatSettingsModel, EmojiPackModel, StickerPackModel
+from models import ChatPostingState, ChatSettingsModel, StickerPackModel
 
 PackNamePattern = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 
@@ -42,6 +38,7 @@ class PostingKind:
     enabled_by_default: bool
     min_pool_packs: int
     discover: bool
+    send_as_upload: bool
 
     def state(self, settings: ChatSettingsModel) -> ChatPostingState:
         return ChatPostingState(settings, self.key)
@@ -65,23 +62,25 @@ StickerKind = PostingKind(
     enabled_by_default=ENABLED_BY_DEFAULT,
     min_pool_packs=MIN_POOL_PACKS,
     discover=DISCOVER_PACKS,
+    send_as_upload=False,
 )
 
-EmojiKind = PostingKind(
-    key="emoji",
-    noun="emoji",
-    plural_noun="emoji",
-    article="an",
-    pack_noun="emoji pack",
-    pack_model=EmojiPackModel,
-    sticker_type=StickerType.CUSTOM_EMOJI,
-    catalogs=EmojiCatalogs,
-    link_path="addemoji",
-    link_pattern=pack_link_pattern("addemoji"),
-    default_interval_minutes=EMOJI_DEFAULT_INTERVAL_MINUTES,
-    enabled_by_default=EMOJI_ENABLED_BY_DEFAULT,
-    min_pool_packs=EMOJI_MIN_POOL_PACKS,
-    discover=DISCOVER_EMOJI_PACKS,
-)
+# EmojiKind = PostingKind(
+#     key="emoji",
+#     noun="emoji",
+#     plural_noun="emoji",
+#     article="an",
+#     pack_noun="emoji pack",
+#     pack_model=EmojiPackModel,
+#     sticker_type=StickerType.CUSTOM_EMOJI,
+#     catalogs=EmojiCatalogs,
+#     link_path="addemoji",
+#     link_pattern=pack_link_pattern("addemoji"),
+#     default_interval_minutes=EMOJI_DEFAULT_INTERVAL_MINUTES,
+#     enabled_by_default=EMOJI_ENABLED_BY_DEFAULT,
+#     min_pool_packs=EMOJI_MIN_POOL_PACKS,
+#     discover=DISCOVER_EMOJI_PACKS,
+#     send_as_upload=True,
+# )
 
-Kinds = (StickerKind, EmojiKind)
+Kinds = (StickerKind,)

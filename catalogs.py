@@ -23,13 +23,13 @@ CombotUrls = (
 CombotPackPattern = re.compile(r'href="/stickers/([A-Za-z0-9_]{2,64})"')
 CombotSectionNames = frozenset({"trending", "top30"})
 
-ChannelFeedUrl = "https://t.me/s/{channel}"
-ChannelFeedPageUrl = "https://t.me/s/{channel}?before={before}"
-ChannelPostIdPattern = re.compile(r'data-post="[A-Za-z0-9_]+/(\d+)"')
-EmojiPackPattern = re.compile(r"addemoji/([A-Za-z0-9_]{2,64})")
-ChannelPageSize = 20
-
-EmojiTgUrl = "https://emoji.tg/g/emoji"
+# ChannelFeedUrl = "https://t.me/s/{channel}"
+# ChannelFeedPageUrl = "https://t.me/s/{channel}?before={before}"
+# ChannelPostIdPattern = re.compile(r'data-post="[A-Za-z0-9_]+/(\d+)"')
+# EmojiPackPattern = re.compile(r"addemoji/([A-Za-z0-9_]{2,64})")
+# ChannelPageSize = 20
+#
+# EmojiTgUrl = "https://emoji.tg/g/emoji"
 
 
 class TlgrmCatalog:
@@ -66,50 +66,50 @@ class CombotCatalog:
         ]
 
 
-class EmojiChannelCatalog:
-    def __init__(self, channel: str, known_last_post_id: int) -> None:
-        self._channel = channel
-        self._last_post_id = known_last_post_id
-
-    async def harvest(self, client: httpx.AsyncClient, requests_count: int) -> list[str]:
-        names = await self._fetch_feed(client, None)
-        offsets = self._random_offsets(requests_count - 1)
-        names += await gather_names(self._fetch_feed(client, offset) for offset in offsets)
-        return names
-
-    def _random_offsets(self, count: int) -> list[int]:
-        highest = self._last_post_id
-        if count <= 0 or highest <= ChannelPageSize:
-            return []
-        return random.sample(range(ChannelPageSize, highest + 1), k=min(count, highest))
-
-    async def _fetch_feed(self, client: httpx.AsyncClient, before: int | None) -> list[str]:
-        url = (
-            ChannelFeedUrl.format(channel=self._channel)
-            if before is None
-            else ChannelFeedPageUrl.format(channel=self._channel, before=before)
-        )
-        response = await client.get(url)
-        response.raise_for_status()
-        post_ids = [int(post_id) for post_id in ChannelPostIdPattern.findall(response.text)]
-        if post_ids:
-            self._last_post_id = max(self._last_post_id, max(post_ids))
-        return EmojiPackPattern.findall(response.text)
-
-
-class EmojiTgCatalog:
-    async def harvest(self, client: httpx.AsyncClient, requests_count: int) -> list[str]:
-        response = await client.get(EmojiTgUrl)
-        response.raise_for_status()
-        return EmojiPackPattern.findall(response.text)
+# class EmojiChannelCatalog:
+#     def __init__(self, channel: str, known_last_post_id: int) -> None:
+#         self._channel = channel
+#         self._last_post_id = known_last_post_id
+#
+#     async def harvest(self, client: httpx.AsyncClient, requests_count: int) -> list[str]:
+#         names = await self._fetch_feed(client, None)
+#         offsets = self._random_offsets(requests_count - 1)
+#         names += await gather_names(self._fetch_feed(client, offset) for offset in offsets)
+#         return names
+#
+#     def _random_offsets(self, count: int) -> list[int]:
+#         highest = self._last_post_id
+#         if count <= 0 or highest <= ChannelPageSize:
+#             return []
+#         return random.sample(range(ChannelPageSize, highest + 1), k=min(count, highest))
+#
+#     async def _fetch_feed(self, client: httpx.AsyncClient, before: int | None) -> list[str]:
+#         url = (
+#             ChannelFeedUrl.format(channel=self._channel)
+#             if before is None
+#             else ChannelFeedPageUrl.format(channel=self._channel, before=before)
+#         )
+#         response = await client.get(url)
+#         response.raise_for_status()
+#         post_ids = [int(post_id) for post_id in ChannelPostIdPattern.findall(response.text)]
+#         if post_ids:
+#             self._last_post_id = max(self._last_post_id, max(post_ids))
+#         return EmojiPackPattern.findall(response.text)
+#
+#
+# class EmojiTgCatalog:
+#     async def harvest(self, client: httpx.AsyncClient, requests_count: int) -> list[str]:
+#         response = await client.get(EmojiTgUrl)
+#         response.raise_for_status()
+#         return EmojiPackPattern.findall(response.text)
 
 
 StickerCatalogs = (TlgrmCatalog(), CombotCatalog())
-EmojiCatalogs = (
-    EmojiChannelCatalog("TgEmojis", 10160),
-    EmojiChannelCatalog("CustomEmojiPack", 42570),
-    EmojiTgCatalog(),
-)
+# EmojiCatalogs = (
+#     EmojiChannelCatalog("TgEmojis", 10160),
+#     EmojiChannelCatalog("CustomEmojiPack", 42570),
+#     EmojiTgCatalog(),
+# )
 
 
 async def gather_names(tasks) -> list[str]:

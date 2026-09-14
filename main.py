@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 
 from telegram import BotCommand, Update
-from telegram.constants import ChatMemberStatus, ChatType, MessageEntityType, StickerType
+from telegram.constants import ChatMemberStatus, ChatType, StickerType
 from telegram.error import TelegramError
 from telegram.ext import (
     ApplicationBuilder,
@@ -41,14 +41,8 @@ from handlers import (
     KindCommands,
 )
 from interval import format_interval, parse_interval
-from kinds import EmojiKind, Kinds, PostingKind, StickerKind
-from packs import (
-    ensure_pool,
-    harvest_pool,
-    parse_pack_name,
-    remember_custom_emoji_packs,
-    remember_pack,
-)
+from kinds import Kinds, PostingKind, StickerKind
+from packs import ensure_pool, harvest_pool, parse_pack_name, remember_pack
 from scheduler import (
     cancel_all_chat_jobs,
     cancel_chat_job,
@@ -64,27 +58,18 @@ logging.basicConfig(
 logger = logging.getLogger("stickerbot")
 
 HelpText = (
-    "I post a random sticker from a random sticker pack and a random custom emoji "
-    "from a random emoji pack. The two run side by side: a chat can take one, the "
-    "other, or both.\n\n"
-    "<b>Stickers</b>\n"
+    "I post a random sticker from a random sticker pack.\n\n"
+    "<b>Commands</b>\n"
     "/sticker — a sticker right now\n"
-    "/interval 1h 20m — how often to post stickers; /interval alone shows it\n"
-    "/on, /off — sticker posting in this chat\n"
-    "/addpack &lt;name or link&gt; — add a sticker pack to the pool\n"
-    "/packs — what the sticker pool holds\n\n"
-    "<b>Emoji</b>\n"
-    "/emoji — a custom emoji right now\n"
-    "/emojiinterval 2h — how often to post emoji; /emojiinterval alone shows it\n"
-    "/emojion, /emojioff — emoji posting in this chat\n"
-    "/addemoji &lt;name or link&gt; — add an emoji pack to the pool\n"
-    "/emojipacks — what the emoji pool holds\n\n"
-    "<b>Both</b>\n"
+    "/interval 1h 20m — how often to post: 45, 30m, 2h, 1d, 1h 20m — "
+    f"{format_interval(MIN_INTERVAL_MINUTES)} at least\n"
+    "/interval — show the current interval\n"
+    "/on, /off — turn posting in this chat on or off\n"
     "/status — this chat's settings\n"
-    f"Intervals take 45, 30m, 2h, 1d, 1h 20m — {format_interval(MIN_INTERVAL_MINUTES)} "
-    f"to {format_interval(MAX_INTERVAL_MINUTES)}.\n\n"
-    "Packs come from public catalogues and channels, and new ones are picked up in "
-    "the background. Anything posted in a chat with me joins the pool too."
+    "/addpack &lt;name or link&gt; — add a sticker pack to the pool\n"
+    "/packs — what the pool holds\n\n"
+    "Packs come from public sticker catalogues and new ones are picked up in the "
+    "background. Any sticker posted in a chat with me joins the pool too."
 )
 RecentPacksLimit = 10
 AdminOnlyText = "Only chat admins can change these settings."
@@ -122,10 +107,9 @@ def interval_help_text(kind: PostingKind) -> str:
 
 def add_pack_help_text(kind: PostingKind) -> str:
     command = commands_for(kind).add_pack.long
-    example = "UtyaDuck" if kind is StickerKind else "Socialmoji"
     return (
-        f"Name {kind.article} {kind.pack_noun}: /{command} {example} or "
-        f"/{command} t.me/{kind.link_path}/{example}"
+        f"Name {kind.article} {kind.pack_noun}: /{command} UtyaDuck or "
+        f"/{command} t.me/{kind.link_path}/UtyaDuck"
     )
 
 
@@ -193,8 +177,8 @@ def make_interval_handler(kind: PostingKind):
         if not context.args:
             posting = "on" if state.enabled else "off"
             await update.effective_message.reply_text(
-                f"{kind.noun.capitalize()} interval: "
-                f"{format_interval(state.interval_minutes)}, posting is {posting}."
+                f"Interval: {format_interval(state.interval_minutes)}, "
+                f"posting is {posting}."
             )
             return
         if not await can_change_settings(update, context):
@@ -223,8 +207,7 @@ def make_turn_on_handler(kind: PostingKind):
         state = kind.state(settings)
         schedule_chat(context.application, kind, chat_id, state.interval_minutes)
         await update.effective_message.reply_text(
-            f"{kind.noun.capitalize()} posting is on, every "
-            f"{format_interval(state.interval_minutes)}."
+            f"Posting is on, every {format_interval(state.interval_minutes)}."
         )
 
     return handler
@@ -239,8 +222,7 @@ def make_turn_off_handler(kind: PostingKind):
         set_enabled(kind, chat_id, False)
         cancel_chat_job(context.application, kind, chat_id)
         await update.effective_message.reply_text(
-            f"{kind.noun.capitalize()} posting is off. "
-            f"/{commands_for(kind).turn_on.long} turns it back on."
+            f"Posting is off. /{commands_for(kind).turn_on.long} turns it back on."
         )
 
     return handler
@@ -264,8 +246,7 @@ def make_add_pack_handler(kind: PostingKind):
             return
         if sticker_set.sticker_type != kind.sticker_type:
             await update.effective_message.reply_text(
-                f"{sticker_set.title} is not {kind.article} {kind.pack_noun}. "
-                f"Try /{commands_for(other_kind(kind)).add_pack.long}."
+                f"{sticker_set.title} is not {kind.article} {kind.pack_noun}."
             )
             return
         added = remember_pack(kind, name, sticker_set.title)
@@ -288,10 +269,6 @@ def make_packs_handler(kind: PostingKind):
         await update.effective_message.reply_text("\n".join(lines))
 
     return handler
-
-
-def other_kind(kind: PostingKind) -> PostingKind:
-    return EmojiKind if kind is StickerKind else StickerKind
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -351,8 +328,8 @@ def admin_stats_text() -> str:
     if stats.busiest_chats:
         lines.append("<b>Busiest chats</b>")
         lines += [
-            f"• {chat.title or chat.chat_tg_id} — {chat.sticker_sent_count} stickers, "
-            f"{chat.emoji_sent_count} emoji"
+            f"• {chat.title or chat.chat_tg_id} — "
+            f"{count_of(chat.sticker_sent_count, 'sticker')}"
             for chat in stats.busiest_chats
         ]
     return "\n".join(lines)
@@ -364,33 +341,28 @@ async def admin_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.effective_message.reply_html(admin_stats_text())
 
 
-def kind_for_sticker(sticker) -> PostingKind:
-    return EmojiKind if sticker.type == StickerType.CUSTOM_EMOJI else StickerKind
-
-
 async def discover_sticker_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     sticker = update.effective_message.sticker
-    if not sticker:
+    if not sticker or sticker.type != StickerType.REGULAR:
         return
-    kind = kind_for_sticker(sticker)
-    if kind.discover and remember_pack(kind, sticker.set_name):
-        logger.info("New %s in the pool: %s", kind.pack_noun, sticker.set_name)
+    if remember_pack(StickerKind, sticker.set_name):
+        logger.info("New pack in the pool: %s", sticker.set_name)
 
 
-def custom_emoji_ids(message) -> list[str]:
-    entities = list(message.entities) + list(message.caption_entities)
-    return [
-        entity.custom_emoji_id
-        for entity in entities
-        if entity.type == MessageEntityType.CUSTOM_EMOJI and entity.custom_emoji_id
-    ]
-
-
-async def discover_emoji_packs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    ids = custom_emoji_ids(update.effective_message)
-    added = await remember_custom_emoji_packs(context.bot, EmojiKind, ids)
-    for name in added:
-        logger.info("New emoji pack in the pool: %s", name)
+# def custom_emoji_ids(message) -> list[str]:
+#     entities = list(message.entities) + list(message.caption_entities)
+#     return [
+#         entity.custom_emoji_id
+#         for entity in entities
+#         if entity.type == MessageEntityType.CUSTOM_EMOJI and entity.custom_emoji_id
+#     ]
+#
+#
+# async def discover_emoji_packs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#     ids = custom_emoji_ids(update.effective_message)
+#     added = await remember_custom_emoji_packs(context.bot, EmojiKind, ids)
+#     for name in added:
+#         logger.info("New emoji pack in the pool: %s", name)
 
 
 async def track_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -423,18 +395,12 @@ def greeting_text(settings) -> str | None:
 
 BotCommands = [
     BotCommand("sticker", "a random sticker right now"),
-    BotCommand("interval", "how often to post stickers: 30m, 1h 20m, 1d"),
-    BotCommand("on", "turn sticker posting on"),
-    BotCommand("off", "turn sticker posting off"),
-    BotCommand("addpack", "add a sticker pack to the pool"),
-    BotCommand("packs", "what the sticker pool holds"),
-    BotCommand("emoji", "a random custom emoji right now"),
-    BotCommand("emojiinterval", "how often to post emoji: 30m, 1h 20m, 1d"),
-    BotCommand("emojion", "turn emoji posting on"),
-    BotCommand("emojioff", "turn emoji posting off"),
-    BotCommand("addemoji", "add an emoji pack to the pool"),
-    BotCommand("emojipacks", "what the emoji pool holds"),
+    BotCommand("interval", "how often to post: 30m, 1h 20m, 1d"),
+    BotCommand("on", "turn posting on"),
+    BotCommand("off", "turn posting off"),
     BotCommand("status", "this chat's settings"),
+    BotCommand("addpack", "add a sticker pack to the pool"),
+    BotCommand("packs", "what the pool holds"),
     BotCommand("help", "what I can do"),
 ]
 
@@ -500,17 +466,17 @@ def main() -> None:
         add_kind_handlers(app, kind)
     app.add_handler(ChatMemberHandler(track_membership, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    if any(kind.discover for kind in Kinds):
+    if StickerKind.discover:
         app.add_handler(MessageHandler(filters.Sticker.ALL, discover_sticker_pack), group=1)
-    if EmojiKind.discover:
-        app.add_handler(
-            MessageHandler(
-                filters.Entity(MessageEntityType.CUSTOM_EMOJI)
-                | filters.CaptionEntity(MessageEntityType.CUSTOM_EMOJI),
-                discover_emoji_packs,
-            ),
-            group=2,
-        )
+    # if EmojiKind.discover:
+    #     app.add_handler(
+    #         MessageHandler(
+    #             filters.Entity(MessageEntityType.CUSTOM_EMOJI)
+    #             | filters.CaptionEntity(MessageEntityType.CUSTOM_EMOJI),
+    #             discover_emoji_packs,
+    #         ),
+    #         group=2,
+    #     )
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

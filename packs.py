@@ -79,17 +79,17 @@ async def pick_random_sticker(bot: Bot, kind: PostingKind) -> Sticker | None:
     return None
 
 
-async def remember_custom_emoji_packs(
-    bot: Bot, kind: PostingKind, custom_emoji_ids: list[str]
-) -> list[str]:
-    if not custom_emoji_ids:
-        return []
-    try:
-        stickers = await bot.get_custom_emoji_stickers(custom_emoji_ids)
-    except TelegramError:
-        return []
-    return [
-        sticker.set_name
-        for sticker in stickers
-        if sticker.set_name and remember_pack(kind, sticker.set_name)
-    ]
+# async def remember_custom_emoji_packs(
+#     bot: Bot, kind: PostingKind, custom_emoji_ids: list[str]
+# ) -> list[str]:
+#     if not custom_emoji_ids:
+#         return []
+#     try:
+#         stickers = await bot.get_custom_emoji_stickers(custom_emoji_ids)
+#     except TelegramError:
+#         return []
+#     return [
+#         sticker.set_name
+#         for sticker in stickers
+#         if sticker.set_name and remember_pack(kind, sticker.set_name)
+#     ]

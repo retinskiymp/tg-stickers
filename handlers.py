@@ -46,13 +46,13 @@ StickerCommands = KindCommands(
     packs=CommandAliases(long="packs"),
 )
 
-EmojiCommands = KindCommands(
-    post_now=CommandAliases(long="emoji", short=("e", "em")),
-    interval=CommandAliases(long="emojiinterval", short=("setemojiinterval", "ei")),
-    turn_on=CommandAliases(long="emojion"),
-    turn_off=CommandAliases(long="emojioff"),
-    add_pack=CommandAliases(long="addemoji", short="addemojipack"),
-    packs=CommandAliases(long="emojipacks"),
-)
+# EmojiCommands = KindCommands(
+#     post_now=CommandAliases(long="emoji", short=("e", "em")),
+#     interval=CommandAliases(long="emojiinterval", short=("setemojiinterval", "ei")),
+#     turn_on=CommandAliases(long="emojion"),
+#     turn_off=CommandAliases(long="emojioff"),
+#     add_pack=CommandAliases(long="addemoji", short="addemojipack"),
+#     packs=CommandAliases(long="emojipacks"),
+# )
 
-CommandsByKindKey = {"sticker": StickerCommands, "emoji": EmojiCommands}
+CommandsByKindKey = {"sticker": StickerCommands}

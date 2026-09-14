@@ -18,6 +18,9 @@ from packs import pick_random_sticker
 logger = logging.getLogger("stickerbot")
 
 MinimumFirstDelaySeconds = 30
+# AnimatedStickerFileName = "emoji.tgs"
+# VideoStickerFileName = "emoji.webm"
+# StaticStickerFileName = "emoji.webp"
 ChatGoneErrors = (
     "chat not found",
     "chat_id is empty",
@@ -96,6 +99,20 @@ def restore_jobs(app: Application) -> dict[str, int]:
 def is_chat_gone(error: BadRequest) -> bool:
     message = str(error).lower()
     return any(marker in message for marker in ChatGoneErrors)
+
+
+# def upload_file_name(sticker: Sticker) -> str:
+#     if sticker.is_animated:
+#         return AnimatedStickerFileName
+#     if sticker.is_video:
+#         return VideoStickerFileName
+#     return StaticStickerFileName
+#
+#
+# async def sticker_payload(bot: Bot, sticker: Sticker) -> InputFile:
+#     file = await bot.get_file(sticker.file_id)
+#     content = await file.download_as_bytearray()
+#     return InputFile(bytes(content), filename=upload_file_name(sticker))
 
 
 async def send_random_post(bot: Bot, kind: PostingKind, chat_id: int) -> bool:

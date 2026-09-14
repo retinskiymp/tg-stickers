@@ -20,8 +20,8 @@ class StickerPackModel(PackColumns, Base):
     __tablename__ = "sticker_packs"
 
 
-class EmojiPackModel(PackColumns, Base):
-    __tablename__ = "emoji_packs"
+# class EmojiPackModel(PackColumns, Base):
+#     __tablename__ = "emoji_packs"
 
 
 class ChatSettingsModel(Base):
@@ -37,11 +37,11 @@ class ChatSettingsModel(Base):
     sticker_last_sent_at = Column(DateTime, nullable=True)
     sticker_sent_count = Column(Integer, nullable=False, default=0)
     sticker_requests_count = Column(Integer, nullable=False, default=0)
-    emoji_interval_minutes = Column(Integer, nullable=False)
-    emoji_enabled = Column(Boolean, nullable=False, default=True)
-    emoji_last_sent_at = Column(DateTime, nullable=True)
-    emoji_sent_count = Column(Integer, nullable=False, default=0)
-    emoji_requests_count = Column(Integer, nullable=False, default=0)
+    # emoji_interval_minutes = Column(Integer, nullable=False)
+    # emoji_enabled = Column(Boolean, nullable=False, default=True)
+    # emoji_last_sent_at = Column(DateTime, nullable=True)
+    # emoji_sent_count = Column(Integer, nullable=False, default=0)
+    # emoji_requests_count = Column(Integer, nullable=False, default=0)
 
 
 def posting_field(name: str) -> property:
