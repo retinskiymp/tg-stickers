@@ -4,7 +4,7 @@ from telegram import Bot, Sticker
 from telegram.error import BadRequest, TelegramError
 
 from catalogs import harvest_pack_names
-from config import PACK_PICK_ATTEMPTS, POPULAR_PACKS_LIMIT
+from config import PACK_PICK_ATTEMPTS, POPULAR_PACKS_LIMIT, SPICY_PACKS_LIMIT
 from db import (
     add_packs,
     count_alive_packs,
@@ -15,10 +15,20 @@ from db import (
 from kinds import PostingKind
 
 
-async def harvest_pool(kind: PostingKind) -> int:
-    """Re-read the top POPULAR_PACKS_LIMIT packs of every catalogue and store the new ones."""
-    names = await harvest_pack_names(kind.catalogs, POPULAR_PACKS_LIMIT)
-    return add_packs(kind, names)
+async def harvest_pool(kind: PostingKind) -> tuple[int, int]:
+    """Re-read the top packs of every catalogue and store the new ones.
+
+    The spicy listings are read first so their names can be withheld from the safe
+    pool: plenty of meme and 18+ packs also rank high in the general listing. The
+    two pools only label where a pack came from — picking ignores the label.
+    """
+    spicy_names = await harvest_pack_names(kind.spicy_catalogs, SPICY_PACKS_LIMIT)
+    spicy_names += await harvest_pack_names(kind.anime_catalogs, SPICY_PACKS_LIMIT)
+    spicy_added = add_packs(kind, spicy_names, spicy=True)
+    spicy = set(spicy_names)
+    safe_names = await harvest_pack_names(kind.catalogs, POPULAR_PACKS_LIMIT)
+    safe_added = add_packs(kind, [name for name in safe_names if name not in spicy])
+    return safe_added, spicy_added
 
 
 async def fetch_pack_sticker(bot: Bot, kind: PostingKind, name: str) -> Sticker | None:
@@ -37,6 +47,7 @@ async def fetch_pack_sticker(bot: Bot, kind: PostingKind, name: str) -> Sticker 
 
 
 async def pick_random_sticker(bot: Bot, kind: PostingKind) -> Sticker | None:
+    """Any live pack, uniformly — popular and spicy share one pool here."""
     if not count_alive_packs(kind):
         await harvest_pool(kind)
     for _ in range(PACK_PICK_ATTEMPTS):

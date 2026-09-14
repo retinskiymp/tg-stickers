@@ -56,20 +56,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("stickerbot")
 
+# Unit letters (m/h/d) stay Latin: they are the interval syntax the user types back.
 HelpText = (
-    "I post a random sticker from a random sticker pack.\n\n"
-    "<b>Commands</b>\n"
-    "/sticker — a sticker right now\n"
-    "/interval 1h 20m — how often to post: 45, 30m, 2h, 1d, 1h 20m — "
-    f"{format_interval(MIN_INTERVAL_MINUTES)} at least\n"
-    "/interval — show the current interval\n"
-    "/on, /off — turn posting in this chat on or off\n"
-    "/status — this chat's settings\n\n"
-    "The pool is built only from the most popular packs of public sticker "
-    "catalogues and is refreshed on a fixed schedule."
+    "Кидаю случайный стикер из случайного набора.\n\n"
+    "<b>Команды</b>\n"
+    "/sticker — стикер прямо сейчас\n"
+    "/interval 1h 20m — как часто постить: 45, 30m, 2h, 1d, 1h 20m — "
+    f"минимум {format_interval(MIN_INTERVAL_MINUTES)}\n"
+    "/interval — показать текущий интервал\n"
+    "/on, /off — включить или выключить постинг в этом чате\n"
+    "/status — настройки этого чата"
 )
 RecentPacksLimit = 10
-AdminOnlyText = "Only chat admins can change these settings."
+AdminOnlyText = "Менять эти настройки могут только администраторы чата."
 HarvestJobName = "harvest"
 
 
@@ -79,42 +78,46 @@ def commands_for(kind: PostingKind) -> KindCommands:
 
 def admin_help_text() -> str:
     lines = [
-        "<b>Admin commands</b>",
-        f"/{HandlerAdminHelp.long} — this list",
-        f"/{HandlerAdminStats.long} — bot stats across every chat",
+        "<b>Команды администратора</b>",
+        f"/{HandlerAdminHelp.long} — этот список",
+        f"/{HandlerAdminStats.long} — статистика бота по всем чатам",
     ]
     lines += [
-        f"/{commands_for(kind).packs.long} — what the {kind.pack_noun} pool holds"
-        for kind in Kinds
+        f"/{commands_for(kind).packs.long} — что лежит в пуле наборов" for kind in Kinds
     ]
     lines.append(
-        "\nThey all start with <b>a</b>, stay out of the command menu and answer "
-        "only to the ids in ADMIN_IDS."
+        "\nВсе начинаются на <b>a</b>, не показываются в меню команд и отвечают "
+        "только на id из ADMIN_IDS."
     )
     return "\n".join(lines)
 
 
-def count_of(amount: int, noun: str) -> str:
-    return f"{amount} {noun}" if amount == 1 else f"{amount} {noun}s"
+def plural(amount: int, one: str, few: str, many: str) -> str:
+    """Russian count form: 1 чат, 2 чата, 5 чатов."""
+    if 11 <= amount % 100 <= 14:
+        return f"{amount} {many}"
+    last = amount % 10
+    if last == 1:
+        return f"{amount} {one}"
+    if 2 <= last <= 4:
+        return f"{amount} {few}"
+    return f"{amount} {many}"
 
 
 def unreachable_text(kind: PostingKind) -> str:
-    return (
-        f"Could not get {kind.article} {kind.noun}: the {kind.pack_noun} catalogues "
-        "are unreachable right now. Try again later."
-    )
+    return f"Не получилось взять {kind.noun} прямо сейчас. Попробуй позже."
 
 
 def send_failed_text(kind: PostingKind) -> str:
-    return f"Telegram would not let me post {kind.article} {kind.noun} here right now."
+    return f"Telegram не дал отправить {kind.noun} в этот чат."
 
 
 def interval_help_text(kind: PostingKind) -> str:
     command = commands_for(kind).interval.long
     return (
-        f"I did not get that interval. Examples: /{command} 45, /{command} 2h, "
-        f"/{command} 1h 20m, /{command} 1d — two parts at most, each with its own "
-        "unit. Allowed range: "
+        f"Не понял интервал. Примеры: /{command} 45, /{command} 2h, "
+        f"/{command} 1h 20m, /{command} 1d — не больше двух частей, у каждой своя "
+        "единица. Допустимо: "
         f"{format_interval(MIN_INTERVAL_MINUTES)} — {format_interval(MAX_INTERVAL_MINUTES)}."
     )
 
@@ -166,7 +169,7 @@ def make_post_now_handler(kind: PostingKind):
         try:
             sent = await send_random_post(context.bot, kind, chat_id)
         except TelegramError as error:
-            logger.warning("Sending %s to %s failed: %s", kind.noun, chat_id, error)
+            logger.warning("Sending %s to %s failed: %s", kind.key, chat_id, error)
             await update.effective_message.reply_text(send_failed_text(kind))
             return
         if not sent:
@@ -181,10 +184,10 @@ def make_interval_handler(kind: PostingKind):
         settings = touch_chat(update)
         state = kind.state(settings)
         if not context.args:
-            posting = "on" if state.enabled else "off"
+            posting = "включён" if state.enabled else "выключен"
             await update.effective_message.reply_text(
-                f"Interval: {format_interval(state.interval_minutes)}, "
-                f"posting is {posting}."
+                f"Интервал: {format_interval(state.interval_minutes)}, "
+                f"постинг {posting}."
             )
             return
         if not await can_change_settings(update, context):
@@ -197,7 +200,7 @@ def make_interval_handler(kind: PostingKind):
         set_interval(kind, chat_id, minutes)
         schedule_chat(context.application, kind, chat_id, minutes)
         await update.effective_message.reply_text(
-            f"I will post {kind.article} {kind.noun} every {format_interval(minutes)}."
+            f"Буду кидать {kind.noun} каждые {format_interval(minutes)}."
         )
 
     return handler
@@ -213,7 +216,7 @@ def make_turn_on_handler(kind: PostingKind):
         state = kind.state(settings)
         schedule_chat(context.application, kind, chat_id, state.interval_minutes)
         await update.effective_message.reply_text(
-            f"Posting is on, every {format_interval(state.interval_minutes)}."
+            f"Постинг включён, каждые {format_interval(state.interval_minutes)}."
         )
 
     return handler
@@ -228,7 +231,7 @@ def make_turn_off_handler(kind: PostingKind):
         set_enabled(kind, chat_id, False)
         cancel_chat_job(context.application, kind, chat_id)
         await update.effective_message.reply_text(
-            f"Posting is off. /{commands_for(kind).turn_on.long} turns it back on."
+            f"Постинг выключен. /{commands_for(kind).turn_on.long} включит обратно."
         )
 
     return handler
@@ -238,11 +241,15 @@ def make_packs_handler(kind: PostingKind):
     async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not is_bot_admin(update):
             return
-        total, alive = count_packs(kind)
-        lines = [f"The pool holds {alive} alive {kind.pack_noun}s of {total}."]
+        total, alive = count_packs(kind, spicy=False)
+        spicy_total, spicy_alive = count_packs(kind, spicy=True)
+        lines = [
+            f"Наборов в пуле: {alive} живых из {total}, "
+            f"спайси {spicy_alive} живых из {spicy_total}."
+        ]
         latest = recent_packs(kind, RecentPacksLimit)
         if latest:
-            lines.append("Added most recently:")
+            lines.append("Добавлены последними:")
             lines += [f"• {pack.title or pack.name}" for pack in latest]
         await update.effective_message.reply_text("\n".join(lines))
 
@@ -272,13 +279,13 @@ def kind_status_line(
 ) -> str:
     state = kind.state(settings)
     parts = [
-        "on" if state.enabled else "off",
-        f"every {format_interval(state.interval_minutes)}",
+        "включено" if state.enabled else "выключено",
+        f"каждые {format_interval(state.interval_minutes)}",
     ]
     remaining = seconds_until_next_run(context.application, kind, settings.chat_tg_id)
     if state.enabled and remaining is not None:
-        parts.append(f"next in {format_countdown(remaining)}")
-    parts.append(f"{state.sent_count} posted")
+        parts.append(f"следующий через {format_countdown(remaining)}")
+    parts.append(f"отправлено {state.sent_count}")
     return f"{kind.plural_noun.capitalize()}: {', '.join(parts)}"
 
 
@@ -287,9 +294,11 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     lines = [kind_status_line(context, kind, settings) for kind in Kinds]
     if is_bot_admin(update):
         for kind in Kinds:
-            total, alive = count_packs(kind)
+            total, alive = count_packs(kind, spicy=False)
+            spicy_total, spicy_alive = count_packs(kind, spicy=True)
             lines.append(
-                f"{kind.pack_noun.capitalize()}s in the pool: {alive} alive of {total}"
+                f"Наборов в пуле: {alive} живых из {total}, "
+                f"спайси {spicy_alive} живых из {spicy_total}"
             )
     await update.effective_message.reply_text("\n".join(lines))
 
@@ -297,24 +306,24 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 def admin_stats_text() -> str:
     stats = collect_admin_stats()
     lines = [
-        "<b>Bot stats</b>",
-        f"Chats known: {count_of(stats.chats_total, 'chat')} "
-        f"({stats.private_chats} private, {stats.group_chats} group)",
-        f"Chats with me now: {stats.chats_present}",
-        f"Chats with posting on: {stats.posting_chats}",
+        "<b>Статистика бота</b>",
+        f"Известно чатов: {plural(stats.chats_total, 'чат', 'чата', 'чатов')} "
+        f"({stats.private_chats} личных, {stats.group_chats} групповых)",
+        f"Сейчас со мной: {stats.chats_present}",
+        f"Постинг включён: {stats.posting_chats}",
     ]
     for kind, kind_stats in zip(Kinds, stats.kinds):
         lines.append(
-            f"<b>{kind.plural_noun.capitalize()}</b>: on in "
-            f"{count_of(kind_stats.enabled_chats, 'chat')}, {kind_stats.sent_count} posted, "
-            f"{kind_stats.requests_count} by command, pool {kind_stats.packs_alive} alive "
-            f"of {kind_stats.packs_total}"
+            f"<b>{kind.plural_noun.capitalize()}</b>: включены в "
+            f"{plural(kind_stats.enabled_chats, 'чате', 'чатах', 'чатах')}, "
+            f"отправлено {kind_stats.sent_count}, по команде {kind_stats.requests_count}, "
+            f"пул {kind_stats.packs_alive} живых из {kind_stats.packs_total}"
         )
     if stats.busiest_chats:
-        lines.append("<b>Busiest chats</b>")
+        lines.append("<b>Самые активные чаты</b>")
         lines += [
             f"• {chat.title or chat.chat_tg_id} — "
-            f"{count_of(chat.sticker_sent_count, 'sticker')}"
+            f"{plural(chat.sticker_sent_count, 'стикер', 'стикера', 'стикеров')}"
             for chat in stats.busiest_chats
         ]
     return "\n".join(lines)
@@ -364,32 +373,36 @@ def greeting_text(settings) -> str | None:
     if not enabled:
         return None
     schedule = ", ".join(
-        f"a random {kind.noun} every {format_interval(kind.state(settings).interval_minutes)}"
+        f"случайный {kind.noun} каждые {format_interval(kind.state(settings).interval_minutes)}"
         for kind in enabled
     )
-    return f"Hi! I will post {schedule}. /help shows what I can do."
+    return f"Привет! Буду кидать {schedule}. /help — что я умею."
 
 
 BotCommands = [
-    BotCommand("sticker", "a random sticker right now"),
-    BotCommand("interval", "how often to post: 30m, 1h 20m, 1d"),
-    BotCommand("on", "turn posting on"),
-    BotCommand("off", "turn posting off"),
-    BotCommand("status", "this chat's settings"),
-    BotCommand("help", "what I can do"),
+    BotCommand("sticker", "случайный стикер прямо сейчас"),
+    BotCommand("interval", "как часто постить: 30m, 1h 20m, 1d"),
+    BotCommand("on", "включить постинг"),
+    BotCommand("off", "выключить постинг"),
+    BotCommand("status", "настройки этого чата"),
+    BotCommand("help", "что я умею"),
 ]
 
 
 async def harvest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     for kind in Kinds:
-        added = await harvest_pool(kind)
-        total, alive = count_packs(kind)
+        added, spicy_added = await harvest_pool(kind)
+        total, alive = count_packs(kind, spicy=False)
+        spicy_total, spicy_alive = count_packs(kind, spicy=True)
         logger.info(
-            "Harvested %s %ss, pool holds %s alive of %s",
+            "Harvested %s %s packs and %s spicy, pool holds %s alive of %s and %s spicy of %s",
             added,
-            kind.pack_noun,
+            kind.key,
+            spicy_added,
             alive,
             total,
+            spicy_alive,
+            spicy_total,
         )
 
 
@@ -403,12 +416,15 @@ async def after_init(app) -> None:
         name=HarvestJobName,
     )
     for kind in Kinds:
-        total, alive = count_packs(kind)
+        total, alive = count_packs(kind, spicy=False)
+        spicy_total, spicy_alive = count_packs(kind, spicy=True)
         logger.info(
-            "%s pool at start: %s alive of %s, schedules restored: %s",
-            kind.pack_noun.capitalize(),
+            "%s pool at start: %s alive of %s, spicy %s alive of %s, schedules restored: %s",
+            kind.key,
             alive,
             total,
+            spicy_alive,
+            spicy_total,
             restored[kind.key],
         )
     logger.info("Bot admins: %s", len(ADMIN_IDS))

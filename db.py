@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import scoped_session, sessionmaker
 
@@ -29,6 +29,25 @@ ensure_database_directory(DB_URL)
 engine = create_engine(DB_URL, echo=False, future=True)
 SessionLocal = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_spicy_column() -> None:
+    """Add the spicy flag to pack tables created before the spicy pool existed."""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    for kind in Kinds:
+        table = kind.pack_model.__tablename__
+        if table not in tables:
+            continue
+        if any(column["name"] == "spicy" for column in inspector.get_columns(table)):
+            continue
+        with engine.begin() as connection:
+            connection.execute(
+                text(f"ALTER TABLE {table} ADD COLUMN spicy BOOLEAN NOT NULL DEFAULT 0")
+            )
+
+
+ensure_spicy_column()
 
 
 def chat_column(kind: PostingKind, name: str):
@@ -130,7 +149,7 @@ def mark_post_requested(kind: PostingKind, chat_id: int) -> None:
         session.commit()
 
 
-def add_packs(kind: PostingKind, names: list[str]) -> int:
+def add_packs(kind: PostingKind, names: list[str], spicy: bool = False) -> int:
     unique = list(dict.fromkeys(names))
     added = 0
     for start in range(0, len(unique), NameChunkSize):
@@ -143,20 +162,25 @@ def add_packs(kind: PostingKind, names: list[str]) -> int:
                 )
             }
             fresh = [name for name in chunk if name not in known]
-            session.add_all([kind.pack_model(name=name) for name in fresh])
+            session.add_all([kind.pack_model(name=name, spicy=spicy) for name in fresh])
+            if spicy and known:
+                # A pack can rank high in the general listing and still be 18+;
+                # the flag wins so it never serves the safe pool.
+                session.query(kind.pack_model).filter(
+                    kind.pack_model.name.in_(known), kind.pack_model.spicy == False
+                ).update({kind.pack_model.spicy: True}, synchronize_session=False)
             session.commit()
             added += len(fresh)
     return added
 
 
-def pick_random_pack_name(kind: PostingKind) -> str | None:
+def pick_random_pack_name(kind: PostingKind, spicy: bool | None = None) -> str | None:
+    """A uniformly random live pack — from one pool when spicy is set, from all of them otherwise."""
     with SessionLocal() as session:
-        row = session.execute(
-            select(kind.pack_model.name)
-            .where(kind.pack_model.alive == True)
-            .order_by(func.random())
-            .limit(1)
-        ).first()
+        query = select(kind.pack_model.name).where(kind.pack_model.alive == True)
+        if spicy is not None:
+            query = query.where(kind.pack_model.spicy == spicy)
+        row = session.execute(query.order_by(func.random()).limit(1)).first()
         return row[0] if row else None
 
 
@@ -181,31 +205,34 @@ def mark_pack_used(
         session.commit()
 
 
-def count_alive_packs(kind: PostingKind) -> int:
+def count_alive_packs(kind: PostingKind, spicy: bool | None = None) -> int:
     with SessionLocal() as session:
-        return (
-            session.query(func.count(kind.pack_model.id))
-            .filter(kind.pack_model.alive == True)
-            .scalar()
+        query = session.query(func.count(kind.pack_model.id)).filter(
+            kind.pack_model.alive == True
         )
+        if spicy is not None:
+            query = query.filter(kind.pack_model.spicy == spicy)
+        return query.scalar()
 
 
-def count_packs(kind: PostingKind) -> tuple[int, int]:
+def count_packs(kind: PostingKind, spicy: bool | None = None) -> tuple[int, int]:
+    """Pack totals — for one pool when spicy is given, across both when it is None."""
     with SessionLocal() as session:
-        total = session.query(func.count(kind.pack_model.id)).scalar()
-        alive = (
-            session.query(func.count(kind.pack_model.id))
-            .filter(kind.pack_model.alive == True)
-            .scalar()
+        totals = session.query(func.count(kind.pack_model.id))
+        alives = session.query(func.count(kind.pack_model.id)).filter(
+            kind.pack_model.alive == True
         )
-        return total, alive
+        if spicy is not None:
+            totals = totals.filter(kind.pack_model.spicy == spicy)
+            alives = alives.filter(kind.pack_model.spicy == spicy)
+        return totals.scalar(), alives.scalar()
 
 
 def recent_packs(kind: PostingKind, limit: int) -> list:
     with SessionLocal() as session:
         return (
             session.query(kind.pack_model)
-            .filter_by(alive=True)
+            .filter_by(alive=True, spicy=False)
             .order_by(kind.pack_model.added_at.desc())
             .limit(limit)
             .all()

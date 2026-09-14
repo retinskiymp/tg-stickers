@@ -11,6 +11,7 @@ class PackColumns:
     name = Column(String, unique=True, nullable=False, index=True)
     title = Column(String, nullable=True)
     alive = Column(Boolean, nullable=False, default=True, index=True)
+    spicy = Column(Boolean, nullable=False, default=False, index=True)
     stickers_count = Column(Integer, nullable=False, default=0)
     added_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     last_used_at = Column(DateTime, nullable=True)

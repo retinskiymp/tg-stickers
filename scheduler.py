@@ -144,7 +144,7 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE) -> None:
         cancel_all_chat_jobs(context.application, chat_id)
     except BadRequest as error:
         if not is_chat_gone(error):
-            logger.warning("Sending %s to %s failed: %s", kind.noun, chat_id, error)
+            logger.warning("Sending %s to %s failed: %s", kind.key, chat_id, error)
             return
         set_enabled(kind, chat_id, False)
         cancel_chat_job(context.application, kind, chat_id)

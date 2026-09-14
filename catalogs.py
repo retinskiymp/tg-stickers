@@ -1,9 +1,18 @@
 import asyncio
 import re
+from itertools import zip_longest
+from urllib.parse import quote
 
 import httpx
 
-from config import HTTP_TIMEOUT_SECONDS, TGLIST_HOST, TLGRM_HOST
+from config import (
+    ANIME_SEARCH_TERMS,
+    HTTP_TIMEOUT_SECONDS,
+    SPICY_CATEGORIES,
+    SPICY_SEARCH_TERMS,
+    TGLIST_HOST,
+    TLGRM_HOST,
+)
 
 UserAgent = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -16,6 +25,12 @@ TlgrmPackPattern = re.compile(
 )
 
 TglistPageUrl = f"https://{TGLIST_HOST}/stickers?sort=rating_score&page={{page}}"
+TglistCategoryPageUrl = (
+    f"https://{TGLIST_HOST}/stickers?category={{category}}&sort=rating_score&page={{{{page}}}}"
+)
+TglistSearchPageUrl = (
+    f"https://{TGLIST_HOST}/stickers?search={{term}}&sort=rating_score&page={{{{page}}}}"
+)
 TglistPackPattern = re.compile(r'href="/view/([A-Za-z0-9_]{2,64})"')
 
 PageBatchSize = 6
@@ -50,14 +65,15 @@ class PopularCatalog:
                 *(self._fetch_page(client, number) for number in batch),
                 return_exceptions=True,
             )
-            harvested = 0
+            known = len(names)
             for result in results:
                 if isinstance(result, BaseException):
                     continue
                 for name in result:
                     names.setdefault(name)
-                harvested += len(result)
-            if not harvested:
+            # Stop on an exhausted listing and on one that ignores ?page= and keeps
+            # serving the same rows, as the adult category does.
+            if len(names) == known:
                 break
             page += PageBatchSize
         return list(names)[:limit]
@@ -86,16 +102,37 @@ StickerCatalogs = (
     PopularCatalog(TlgrmPageUrl, TlgrmPackPattern),
     PopularCatalog(TglistPageUrl, TglistPackPattern),
 )
+# The spicy pool is memes, swearing and 18+ together. tlgrm.ru offers neither an
+# adult section nor a server-side search, so it all comes from tglist: whole
+# categories, which carry the bulk, plus a keyword search per term on top.
+SpicyStickerCatalogs = tuple(
+    PopularCatalog(TglistCategoryPageUrl.format(category=quote(category)), TglistPackPattern)
+    for category in SPICY_CATEGORIES
+) + tuple(
+    PopularCatalog(TglistSearchPageUrl.format(term=quote(term)), TglistPackPattern)
+    for term in SPICY_SEARCH_TERMS
+)
+
+AnimeStickerCatalogs = tuple(
+    PopularCatalog(TglistSearchPageUrl.format(term=quote(term)), TglistPackPattern)
+    for term in ANIME_SEARCH_TERMS
+)
 
 
-async def gather_names(tasks) -> list[str]:
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    names: list[str] = []
-    for result in results:
-        if isinstance(result, BaseException):
-            continue
-        names += result
-    return names
+def merge_by_rank(groups: list[list[str]], limit: int) -> list[str]:
+    """Take rank 1 from every catalogue, then rank 2, and so on, up to `limit`.
+
+    Concatenating instead would let the first catalogue alone fill a limit smaller
+    than the combined yield, and the rest would never be reached.
+    """
+    merged: dict[str, None] = {}
+    for row in zip_longest(*groups):
+        for name in row:
+            if name is not None:
+                merged.setdefault(name)
+        if len(merged) >= limit:
+            break
+    return list(merged)[:limit]
 
 
 async def harvest_pack_names(catalogs, limit: int) -> list[str]:
@@ -103,4 +140,10 @@ async def harvest_pack_names(catalogs, limit: int) -> list[str]:
     async with httpx.AsyncClient(
         timeout=HTTP_TIMEOUT_SECONDS, headers=headers, follow_redirects=True
     ) as client:
-        return await gather_names(catalog.harvest(client, limit) for catalog in catalogs)
+        results = await asyncio.gather(
+            *(catalog.harvest(client, limit) for catalog in catalogs),
+            return_exceptions=True,
+        )
+    return merge_by_rank(
+        [result for result in results if not isinstance(result, BaseException)], limit
+    )

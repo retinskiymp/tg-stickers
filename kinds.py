@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from telegram.constants import StickerType
 
-from catalogs import StickerCatalogs
+from catalogs import AnimeStickerCatalogs, SpicyStickerCatalogs, StickerCatalogs
 from config import DEFAULT_INTERVAL_MINUTES, ENABLED_BY_DEFAULT, MIN_INTERVAL_MINUTES
 from models import ChatPostingState, ChatSettingsModel, StickerPackModel
 
@@ -12,11 +12,12 @@ class PostingKind:
     key: str
     noun: str
     plural_noun: str
-    article: str
     pack_noun: str
     pack_model: type
     sticker_type: str
     catalogs: tuple
+    spicy_catalogs: tuple
+    anime_catalogs: tuple
     default_interval_minutes: int
     enabled_by_default: bool
     send_as_upload: bool
@@ -30,13 +31,14 @@ class PostingKind:
 
 StickerKind = PostingKind(
     key="sticker",
-    noun="sticker",
-    plural_noun="stickers",
-    article="a",
-    pack_noun="sticker pack",
+    noun="стикер",
+    plural_noun="стикеры",
+    pack_noun="набор",
     pack_model=StickerPackModel,
     sticker_type=StickerType.REGULAR,
     catalogs=StickerCatalogs,
+    spicy_catalogs=SpicyStickerCatalogs,
+    anime_catalogs=AnimeStickerCatalogs,
     default_interval_minutes=DEFAULT_INTERVAL_MINUTES,
     enabled_by_default=ENABLED_BY_DEFAULT,
     send_as_upload=False,

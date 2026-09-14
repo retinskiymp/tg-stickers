@@ -3,6 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+for env_file in .env.main .env; do
+  if [[ ! -f "$SCRIPT_DIR/$env_file" ]]; then
+    echo "Missing $env_file — copy $env_file.example and fill it in." >&2
+    exit 1
+  fi
+done
+
 DB_DIR="$HOME/.stickerbot"
 mkdir -p "$DB_DIR"
 
@@ -18,6 +25,7 @@ docker build \
 
 docker run -d --name "$NAME" \
   --restart=unless-stopped \
+  --env-file "$SCRIPT_DIR/.env.main" \
   --env-file "$SCRIPT_DIR/.env" \
   -v "$DB_DIR:/app/db" \
   "$IMAGE_TAG"
