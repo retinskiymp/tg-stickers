@@ -15,6 +15,7 @@ from config import (
     ADMIN_IDS,
     ADMIN_ONLY_SETTINGS,
     EXCLUDED_PACK_SUFFIXES,
+    EXCLUDED_TITLE_WORDS,
     HARVEST_INTERVAL_MINUTES,
     MAX_INTERVAL_MINUTES,
     MIN_INTERVAL_MINUTES,
@@ -23,6 +24,7 @@ from config import (
 from db import (
     collect_admin_stats,
     count_packs,
+    disable_excluded_titles,
     drop_excluded_packs,
     disable_all_posting,
     load_chat_settings,
@@ -405,8 +407,12 @@ async def after_init(app) -> None:
     await app.bot.set_my_commands(BotCommands)
     for kind in Kinds:
         dropped = drop_excluded_packs(kind, EXCLUDED_PACK_SUFFIXES)
-        if dropped:
-            logger.info("Dropped %s excluded %s packs", dropped, kind.key)
+        retired = disable_excluded_titles(kind, EXCLUDED_TITLE_WORDS)
+        if dropped or retired:
+            logger.info(
+                "Excluded %s %s packs by name and retired %s by title",
+                dropped, kind.key, retired,
+            )
     restored = restore_jobs(app)
     app.job_queue.run_repeating(
         harvest_job,

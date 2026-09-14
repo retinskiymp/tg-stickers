@@ -62,7 +62,12 @@ ANIME_SEARCH_TERMS: tuple[str, ...] = read_list(
 # Pack name endings to drop: bulk VK imports and stickroom rips are low quality
 # and crowd the pool.
 EXCLUDED_PACK_SUFFIXES: tuple[str, ...] = read_list(
-    os.getenv("EXCLUDED_PACK_SUFFIXES", "_vk,stickroom")
+    os.getenv("EXCLUDED_PACK_SUFFIXES", "vk,stickroom")
+)
+# Owners rename packs to bolt promo tags onto the title, so this matches anywhere
+# in it — and only the live title from Telegram, never the catalogue's stale copy.
+EXCLUDED_TITLE_WORDS: tuple[str, ...] = read_list(
+    os.getenv("EXCLUDED_TITLE_WORDS", "stickroom,premium_stickers")
 )
 TLGRM_HOST: str = os.getenv("TLGRM_HOST", "tlgrm.ru")
 TGLIST_HOST: str = os.getenv("TGLIST_HOST", "tglist.info")

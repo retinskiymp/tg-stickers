@@ -4,7 +4,12 @@ from telegram import Bot, Sticker
 from telegram.error import BadRequest, TelegramError
 
 from catalogs import harvest_pack_names
-from config import PACK_PICK_ATTEMPTS, POPULAR_PACKS_LIMIT, SPICY_PACKS_LIMIT
+from config import (
+    EXCLUDED_TITLE_WORDS,
+    PACK_PICK_ATTEMPTS,
+    POPULAR_PACKS_LIMIT,
+    SPICY_PACKS_LIMIT,
+)
 from db import (
     add_packs,
     count_alive_packs,
@@ -31,6 +36,15 @@ async def harvest_pool(kind: PostingKind) -> tuple[int, int]:
     return safe_added, spicy_added
 
 
+ExcludedTitleWords = tuple(word.lower() for word in EXCLUDED_TITLE_WORDS)
+
+
+def is_wanted_title(title: str | None) -> bool:
+    """Titles are free text, so an excluded word counts anywhere inside one."""
+    lowered = (title or "").lower()
+    return not any(word in lowered for word in ExcludedTitleWords)
+
+
 async def fetch_pack_sticker(bot: Bot, kind: PostingKind, name: str) -> Sticker | None:
     try:
         sticker_set = await bot.get_sticker_set(name)
@@ -40,6 +54,11 @@ async def fetch_pack_sticker(bot: Bot, kind: PostingKind, name: str) -> Sticker 
     except TelegramError:
         return None
     if not sticker_set.stickers or sticker_set.sticker_type != kind.sticker_type:
+        mark_pack_dead(kind, name)
+        return None
+    # The live title is the only place a promo rename shows up; catalogues keep
+    # whatever the title was when they last parsed the pack.
+    if not is_wanted_title(sticker_set.title):
         mark_pack_dead(kind, name)
         return None
     mark_pack_used(kind, name, sticker_set.title, len(sticker_set.stickers))

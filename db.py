@@ -174,14 +174,34 @@ def add_packs(kind: PostingKind, names: list[str], spicy: bool = False) -> int:
     return added
 
 
-def like_suffix(suffix: str) -> str:
-    """A LIKE pattern matching this literal ending.
+def escape_like(value: str) -> str:
+    """Neutralise the _ and % wildcards so LIKE matches the text literally.
 
-    LIKE treats _ and % as wildcards, and the suffixes we exclude ("_vk") start
-    with one — unescaped, "%_vk" would also match "Nekovk".
+    Without this, a rule like "_vk" would also match "Nekovk".
     """
-    escaped = suffix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}"
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def disable_excluded_titles(kind: PostingKind, words: tuple[str, ...]) -> int:
+    """Retire packs whose stored title carries an excluded word.
+
+    Marked dead rather than deleted: the name still passes the harvest filter, so
+    deleting would only invite the next harvest to add it straight back.
+    """
+    if not words:
+        return 0
+    with SessionLocal() as session:
+        changed = sum(
+            session.query(kind.pack_model)
+            .filter(
+                kind.pack_model.alive == True,
+                kind.pack_model.title.ilike(f"%{escape_like(word)}%", escape="\\"),
+            )
+            .update({kind.pack_model.alive: False}, synchronize_session=False)
+            for word in words
+        )
+        session.commit()
+        return changed
 
 
 def drop_excluded_packs(kind: PostingKind, suffixes: tuple[str, ...]) -> int:
@@ -195,7 +215,7 @@ def drop_excluded_packs(kind: PostingKind, suffixes: tuple[str, ...]) -> int:
     with SessionLocal() as session:
         removed = sum(
             session.query(kind.pack_model)
-            .filter(kind.pack_model.name.ilike(like_suffix(suffix), escape="\\"))
+            .filter(kind.pack_model.name.ilike(f"%{escape_like(suffix)}", escape="\\"))
             .delete(synchronize_session=False)
             for suffix in suffixes
         )
