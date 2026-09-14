@@ -14,6 +14,7 @@ from telegram.ext import (
 from config import (
     ADMIN_IDS,
     ADMIN_ONLY_SETTINGS,
+    EXCLUDED_PACK_SUFFIXES,
     HARVEST_INTERVAL_MINUTES,
     MAX_INTERVAL_MINUTES,
     MIN_INTERVAL_MINUTES,
@@ -22,6 +23,7 @@ from config import (
 from db import (
     collect_admin_stats,
     count_packs,
+    drop_excluded_packs,
     disable_all_posting,
     load_chat_settings,
     mark_post_requested,
@@ -290,16 +292,9 @@ def kind_status_line(
 
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """This chat's settings and nothing else — pool numbers belong to /astats."""
     settings = touch_chat(update)
     lines = [kind_status_line(context, kind, settings) for kind in Kinds]
-    if is_bot_admin(update):
-        for kind in Kinds:
-            total, alive = count_packs(kind, spicy=False)
-            spicy_total, spicy_alive = count_packs(kind, spicy=True)
-            lines.append(
-                f"Наборов в пуле: {alive} живых из {total}, "
-                f"спайси {spicy_alive} живых из {spicy_total}"
-            )
     await update.effective_message.reply_text("\n".join(lines))
 
 
@@ -408,6 +403,10 @@ async def harvest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def after_init(app) -> None:
     await app.bot.set_my_commands(BotCommands)
+    for kind in Kinds:
+        dropped = drop_excluded_packs(kind, EXCLUDED_PACK_SUFFIXES)
+        if dropped:
+            logger.info("Dropped %s excluded %s packs", dropped, kind.key)
     restored = restore_jobs(app)
     app.job_queue.run_repeating(
         harvest_job,

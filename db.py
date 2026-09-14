@@ -174,6 +174,35 @@ def add_packs(kind: PostingKind, names: list[str], spicy: bool = False) -> int:
     return added
 
 
+def like_suffix(suffix: str) -> str:
+    """A LIKE pattern matching this literal ending.
+
+    LIKE treats _ and % as wildcards, and the suffixes we exclude ("_vk") start
+    with one — unescaped, "%_vk" would also match "Nekovk".
+    """
+    escaped = suffix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}"
+
+
+def drop_excluded_packs(kind: PostingKind, suffixes: tuple[str, ...]) -> int:
+    """Delete stored packs the exclusion rules now reject.
+
+    Deleted rather than marked dead, so dropping a suffix from the rules lets the
+    packs back in on the next harvest.
+    """
+    if not suffixes:
+        return 0
+    with SessionLocal() as session:
+        removed = sum(
+            session.query(kind.pack_model)
+            .filter(kind.pack_model.name.ilike(like_suffix(suffix), escape="\\"))
+            .delete(synchronize_session=False)
+            for suffix in suffixes
+        )
+        session.commit()
+        return removed
+
+
 def pick_random_pack_name(kind: PostingKind, spicy: bool | None = None) -> str | None:
     """A uniformly random live pack — from one pool when spicy is set, from all of them otherwise."""
     with SessionLocal() as session:

@@ -59,6 +59,11 @@ SPICY_SEARCH_TERMS: tuple[str, ...] = read_list(
 ANIME_SEARCH_TERMS: tuple[str, ...] = read_list(
     os.getenv("ANIME_SEARCH_TERMS", "anime,neko,chibi,kawaii,waifu")
 )
+# Pack name endings to drop: bulk VK imports and stickroom rips are low quality
+# and crowd the pool.
+EXCLUDED_PACK_SUFFIXES: tuple[str, ...] = read_list(
+    os.getenv("EXCLUDED_PACK_SUFFIXES", "_vk,stickroom")
+)
 TLGRM_HOST: str = os.getenv("TLGRM_HOST", "tlgrm.ru")
 TGLIST_HOST: str = os.getenv("TGLIST_HOST", "tglist.info")
 HTTP_TIMEOUT_SECONDS: float = float(os.getenv("HTTP_TIMEOUT_SECONDS", "10"))

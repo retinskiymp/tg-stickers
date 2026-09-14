@@ -7,6 +7,7 @@ import httpx
 
 from config import (
     ANIME_SEARCH_TERMS,
+    EXCLUDED_PACK_SUFFIXES,
     HTTP_TIMEOUT_SECONDS,
     SPICY_CATEGORIES,
     SPICY_SEARCH_TERMS,
@@ -35,6 +36,12 @@ TglistPackPattern = re.compile(r'href="/view/([A-Za-z0-9_]{2,64})"')
 
 PageBatchSize = 6
 MaxCatalogPages = 300
+ExcludedSuffixes = tuple(suffix.lower() for suffix in EXCLUDED_PACK_SUFFIXES)
+
+
+def is_wanted(name: str) -> bool:
+    lowered = name.lower()
+    return not any(lowered.endswith(suffix) for suffix in ExcludedSuffixes)
 
 # CombotUrls = (
 #     "https://combot.org/stickers",
@@ -58,6 +65,7 @@ class PopularCatalog:
 
     async def harvest(self, client: httpx.AsyncClient, limit: int) -> list[str]:
         names: dict[str, None] = {}
+        seen: set[str] = set()
         page = 1
         while len(names) < limit and page <= MaxCatalogPages:
             batch = range(page, min(page + PageBatchSize, MaxCatalogPages + 1))
@@ -65,15 +73,21 @@ class PopularCatalog:
                 *(self._fetch_page(client, number) for number in batch),
                 return_exceptions=True,
             )
-            known = len(names)
+            fresh = False
             for result in results:
                 if isinstance(result, BaseException):
                     continue
                 for name in result:
-                    names.setdefault(name)
+                    if name in seen:
+                        continue
+                    seen.add(name)
+                    fresh = True
+                    if is_wanted(name):
+                        names.setdefault(name)
             # Stop on an exhausted listing and on one that ignores ?page= and keeps
-            # serving the same rows, as the adult category does.
-            if len(names) == known:
+            # serving the same rows, as the adult category does. Measured on raw
+            # names so a batch of pure junk does not look like the end.
+            if not fresh:
                 break
             page += PageBatchSize
         return list(names)[:limit]
